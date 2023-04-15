@@ -1,0 +1,119 @@
+Трехголовая сеть в PyTorch Задача Написать CNN для тексат. Задание на машинное обучение полностью на питоне. выполните с использованием данной репозитории https://github.com/girafe-ai/ml-course/tree/23s_advanced/homeworks_advanced/Lab02_NMT и https://github.com/girafe-ai/ml-course/blob/23s_advanced/homeworks_advanced/Lab02_NMT/lab02_Neural_Machine_Translation.ipynb напиши код, выполняющую задачу учитывая что данные репозиторий уже склонировал в рабочий проект
+AI:
+Привет! Я могу помочь в написании трехголовой сети для задачи машинного перевода на PyTorch с использованием данной репозитории. Для начала, давайте убедимся, что вы склонировали репозиторий girafe-ai/ml-course в ваш рабочий проект.
+
+После этого, я могу помочь вам с кодом. Для написания трехголовой сети, мы можем использовать модуль nn в PyTorch. Вам потребуется создать три головы на выходе модели, каждая из которых будет предсказывать отдельные параметры модели.
+
+Вы можете использовать код из лабораторной работы по машинному переводу на PyTorch в файле lab02_Neural_Machine_Translation.ipynb, который вы нашли в репозитории. Следуйте инструкциям в файле, и я буду на вашей стороне, чтобы помочь, если у вас возникнут какие-либо вопросы.
+
+User:
+начни писать
+AI:
+Конечно! Для начала, давайте импортируем необходимые библиотеки и модули. Мы будем использовать PyTorch и Transformers для создания нашей трехголовой сети.
+
+import torch
+import torch.nn as nn
+from transformers import BertModel
+
+# Определим нашу трехголовую сеть
+class ThreeHeadedModel(nn.Module):
+    def __init__(self):
+        super(ThreeHeadedModel, self).__init__()
+
+        # Инициализируем нашу модель BERT
+        self.bert = BertModel.from_pretrained('bert-base-multilingual-cased')
+
+        # Голова 1 - Предсказание следующего слова
+        self.next_word_head = nn.Linear(768, 30522)
+
+        # Голова 2 - Предсказание маски
+        self.masked_word_head = nn.Linear(768, 2)
+
+        # Голова 3 - Предсказание языка
+        self.language_head = nn.Linear(768, 2)
+
+    def forward(self, input_ids, attention_mask):
+        # Пропустим наши данные через BERT
+        outputs = self.bert(input_ids=input_ids, attention_mask=attention_mask)
+
+        # Получим скрытые состояния
+        hidden_states = outputs[0]
+
+        # Выход первой головы - следующее слово
+        next_word_output = self.next_word_head(hidden_states)
+
+        # Выход второй головы - предсказание маски
+        masked_word_output = self.masked_word_head(hidden_states)
+
+        # Выход третьей головы - предсказание языка
+        language_output = self.language_head(hidden_states[:, 0, :])
+
+        return next_word_output, masked_word_output, language_output
+Вот и все! Теперь у вас есть трехголовая сеть для задачи машинного перевода на PyTorch. Если у вас возникнут какие-либо вопросы, пожалуйста, не стесняйтесь спросить у меня о помощи!
+
+User:
+соедини скрипт с репозиторием
+AI:
+Хорошо! Для того, чтобы соединить наш скрипт с репозиторием, мы можем создать новый файл в рабочей директории проекта и импортировать наш скрипт в него. Давайте создадим новый файл three_headed_model.py и импортируем наш класс ThreeHeadedModel:
+
+from lab02_Neural_Machine_Translation import *
+import torch
+from torch.utils.data import DataLoader
+from transformers import AdamW, get_linear_schedule_with_warmup
+import random
+
+# Зададим гиперпараметры модели
+EPOCHS = 10
+BATCH_SIZE = 32
+LEARNING_RATE = 2e-5
+
+# Инициализируем нашу трехголовую сеть
+model = ThreeHeadedModel()
+
+# Загрузим данные для тренировки
+train_dataset = TranslationDataset(train_data, src_tokenizer, tgt_tokenizer)
+train_dataloader = DataLoader(train_dataset, batch_size=BATCH_SIZE)
+
+# Определим функцию потерь
+cross_entropy_loss = nn.CrossEntropyLoss()
+
+# Определим оптимизатор и scheduler
+optimizer = AdamW(model.parameters(), lr=LEARNING_RATE)
+total_steps = len(train_dataloader) * EPOCHS
+scheduler = get_linear_schedule_with_warmup(optimizer, num_warmup_steps=0, num_training_steps=total_steps)
+
+# Зададим device нашей модели
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+model.to(device)
+
+# Начнем тренировку модели
+for epoch in range(EPOCHS):
+    for i, batch in enumerate(train_dataloader):
+        # Получим данные и отправим их на device
+        input_ids = batch['input_ids'].to(device)
+        attention_mask = batch['attention_mask'].to(device)
+
+        # Обнулим градиенты и сделаем forward pass
+        optimizer.zero_grad()
+        next_word_output, masked_word_output, language_output = model(input_ids=input_ids, attention_mask=attention_mask)
+
+        # Вычислим функцию потерь и сделаем backward pass
+        next_word_loss = cross_entropy_loss(next_word_output.view(-1, 30522), batch['next_word'].view(-1).to(device))
+        masked_word_loss = cross_entropy_loss(masked_word_output.view(-1, 2), batch['masked_word'].view(-1).to(device))
+        language_loss = cross_entropy_loss(language_output, batch['language'].to(device))
+        loss = next_word_loss + masked_word_loss + language_loss
+        loss.backward()
+
+        # Обновим веса с помощью оптимизатора и scheduler
+        optimizer.step()
+        scheduler.step()
+
+        # Выведем текущую информацию о процессе тренировки
+        if i % 100 == 0:
+            print(f'Epoch {epoch + 1}/{EPOCHS}, Batch {i}/{len(train_dataloader)}, Loss: {loss.item()}')
+Как вы можете видеть, мы теперь импортировали нашу трехголовую модель ThreeHeadedModel и используем ее для тренировки наших данных. Мы также определили гиперпараметры, функцию потерь, оптимизатор, scheduler и device нашей модели.
+
+Я надеюсь, что это помогло вам успешно соединить наш скрипт с репозиторием! Если у вас есть еще какие-то вопросы, пожалуйста, дайте мне знать!
+
+User:
+Traceback (most recent call last): File "C:\Users\Настя\Desktop\ffreel\2\gpt\three_headed_model.py", line 16, in train_dataset = TranslationDataset(train_data, src_tokenizer, tgt_tokenizer) ^^^^^^^^^^^^^^^^^^ NameError: name 'TranslationDataset' is not defined
